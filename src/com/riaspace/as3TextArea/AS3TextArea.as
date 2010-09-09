@@ -1,6 +1,5 @@
 package com.riaspace.as3TextArea
 {
-	import flash.events.Event;
 	import flash.events.TimerEvent;
 	import flash.text.StyleSheet;
 	import flash.utils.Timer;
@@ -25,7 +24,7 @@ package com.riaspace.as3TextArea
 		
 		public var classMethodVariableModifiers:Array = ["class", "const", "extends", "final", "function", "get", "dynamic", "implements", "interface", "native", "new", "set", "static"]; 
 		
-		public var flowControl:Array = ["break", "case", "continue", "default", "do", "else", "for", "for\ each", "if", "is", "label", "typeof", "return", "switch", "while", "in"];
+		public var flowControl:Array = ["break", "case", "continue", "default", "do", "else", "for", "for\\seach", "if", "is", "label", "typeof", "return", "switch", "while", "in"];
 		
 		public var errorHandling:Array = ["catch", "finally", "throw", "try"];
 		
@@ -156,30 +155,7 @@ package com.riaspace.as3TextArea
 				.replace(/</g, "&lt;")
 				.replace(/>/g, "&gt;");
 			
-			var token:* = syntax.exec(script);
-			while(token)
-			{
-				var tokenValue:String = token[0];
-				var tokenType:String = getTokenType(tokenValue);
-				
-				var tokenStyleName:String = "." + tokenType;
-				var tokenStyle:Object = 
-					styleSheet.styleNames.indexOf(tokenStyleName) > -1
-					?
-					styleSheet.getStyle("." + tokenType)
-					:
-					styleSheet.getStyle(".default");
-				
-				var spanTemplate:String = "<span" + getStyleAttributes(tokenStyle) + "></span>";
-				
-				script = 
-					script.substring(0, syntax.lastIndex - tokenValue.length) 
-					+ spanTemplate.replace(/></, ">" + tokenValue + "<")
-					+ script.substring(syntax.lastIndex);
-				
-				syntax.lastIndex = syntax.lastIndex + spanTemplate.length; 
-				token = syntax.exec(script);
-			}
+			script = script.replace(syntax, replaceFunction);
 			
 			var p:String = "<TextFlow xmlns=\"" + TEXT_LAYOUT_NAMESPACE + "\"><p " 
 				+ getStyleAttributes(styleSheet.getStyle(".text")) + ">" + script + "</p></TextFlow>";
@@ -188,6 +164,22 @@ package com.riaspace.as3TextArea
 			
 			this.scrollToRange(ancPos, actPos);
 			this.selectRange(ancPos, actPos);
+		}
+		
+		protected function replaceFunction():String
+		{
+			var tokenValue:String = arguments[0];
+			var tokenType:String = getTokenType(tokenValue);
+			
+			var tokenStyleName:String = "." + tokenType;
+			var tokenStyle:Object = 
+				styleSheet.styleNames.indexOf(tokenStyleName) > -1
+				?
+				styleSheet.getStyle("." + tokenType)
+				:
+				styleSheet.getStyle(".default");
+			
+			return "<span" + getStyleAttributes(tokenStyle) + ">" + tokenValue + "</span>";
 		}
 		
 		protected function getStyleAttributes(style:Object):String
