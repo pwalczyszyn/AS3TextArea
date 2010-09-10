@@ -196,33 +196,45 @@ package com.riaspace.as3TextArea
 		protected function colorize():void
 		{
 			var stime:Number = new Date().time;
+			// Creating new CompositeOperation
 			var compositeOperation:CompositeOperation = new CompositeOperation();
-
-			var operationState:SelectionState = new SelectionState(textFlow,
-				0, text.length);
-			var formatOperation:ApplyFormatOperation =
+			
+			// Reseting whole text to the default TextLayoutFormat
+			var operationState:SelectionState = new SelectionState(textFlow, 0, text.length);
+			var formatOperation:ApplyFormatOperation = 
 				new ApplyFormatOperation(operationState, formats.text, null);
 			compositeOperation.addOperation(formatOperation);
 			
+			// Executing RegExp for the first token			
 			var token:* = syntax.exec(this.text);
 			while(token)
 			{
+				// Getting token value
 				var tokenValue:String = token[0];
+				// Detecting token type
 				var tokenType:String = getTokenType(tokenValue);
+				// Getting TextLayoutFormat for current token type
 				var format:TextLayoutFormat = formats[tokenType]; 
-
+				
+				// Creating new SelectionState for at the location of current token
 				operationState = new SelectionState(textFlow,
 					token.index, token.index + tokenValue.length);
 				
+				// Creating new ApplyFormatOperation for current token
 				formatOperation = new ApplyFormatOperation(operationState, 
 					format, null);
 				
+				// Adding ApplyFormatOperation to CompositeOperation
 				compositeOperation.addOperation(formatOperation);
-
+				
+				// Incrementing RegExp syntax lastIndex after the current token
 				syntax.lastIndex = token.index + tokenValue.length;
+				
+				// Executing RegExp for the next token
 				token = syntax.exec(this.text);
 			}
 			
+			// Executing batch of ApplyFormatOperation's			
 			var success:Boolean = compositeOperation.doOperation();
 //			if (success)
 //				textFlow.flowComposer.updateAllControllers();
