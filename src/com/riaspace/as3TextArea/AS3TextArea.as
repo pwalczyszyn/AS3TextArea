@@ -59,16 +59,14 @@ package com.riaspace.as3TextArea
 		
 		protected var pseudoThread:Timer = new Timer(200, 1);
 		
-		protected var formats:Dictionary = new Dictionary();
+		protected var formats:Dictionary;
 		
 		public function AS3TextArea()
 		{
 			super();
 			
 			styleSheet.parseCSS(defaultStyleSheet);
-			
 			initTokenTypeFormats();
-			
 			initTextFlow();
 			
 			initSyntaxRegExp();
@@ -112,6 +110,8 @@ package com.riaspace.as3TextArea
 
 		protected function initTokenTypeFormats():void
 		{
+			formats  = new Dictionary();
+			
 			function getTokenTypeFormat(tokenType:String):TextLayoutFormat
 			{
 				var tokenStyleName:String = "." + tokenType;
@@ -311,7 +311,12 @@ package com.riaspace.as3TextArea
 			else
 				styleSheet.parseCSS(defaultStyleSheet);
 			
-			colorize();
+			var currentText:String = text;
+			
+			initTokenTypeFormats();
+			initTextFlow();
+			
+			text = currentText;
 		}
 	}
 }
