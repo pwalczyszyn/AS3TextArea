@@ -2,14 +2,17 @@ package com.riaspace.as3TextArea
 {
 	import flash.events.TimerEvent;
 	import flash.text.StyleSheet;
+	import flash.utils.Dictionary;
 	import flash.utils.Timer;
 	
 	import flashx.textLayout.conversion.ITextImporter;
-	import flashx.textLayout.conversion.TextConverter;
+	import flashx.textLayout.edit.SelectionState;
 	import flashx.textLayout.elements.Configuration;
+	import flashx.textLayout.elements.TextFlow;
 	import flashx.textLayout.formats.LineBreak;
 	import flashx.textLayout.formats.TextLayoutFormat;
-	import flashx.textLayout.formats.WhiteSpaceCollapse;
+	import flashx.textLayout.operations.ApplyFormatOperation;
+	import flashx.textLayout.operations.CompositeOperation;
 	
 	import spark.components.TextArea;
 	import spark.components.TextSelectionHighlighting;
@@ -44,7 +47,7 @@ package com.riaspace.as3TextArea
 		
 		public var comments:Array = ["//.*$", "/\\\*[.\\w\\s]*\\\*/", "/\\\*([^*]|[\\r\\n]|(\\\*+([^*/]|[\\r\\n])))*\\\*/"];
 		
-		public var defaultStyleSheet:String = ".text{color:#000000;font-family: courier;} .default{color:#0839ff;} .var{color:#80aad4;} .function{color:#55a97f;}.strings{color:#a82929;} .comment{color:#0e9e0f;font-style:italic;} .asDocComment{color:#5d78c9;}";
+		public var defaultStyleSheet:String = ".text{color:#000000;font-family: courier;} .default{color:#0839ff;} .var{color:#80aad4;} .function{color:#55a97f;} .strings{color:#a82929;} .comment{color:#0e9e0f;font-style:italic;} .asDocComment{color:#5d78c9;}";
 		
 		protected var _syntaxStyleSheet:String;
 		
@@ -54,16 +57,21 @@ package com.riaspace.as3TextArea
 		
 		protected var importer:ITextImporter;
 		
-		protected var pseudoThread:Timer = new Timer(300, 1);
+		protected var pseudoThread:Timer = new Timer(200, 1);
+		
+		protected var formats:Dictionary = new Dictionary();
 		
 		public function AS3TextArea()
 		{
 			super();
 			
-			initTextFlowImporter();
+			styleSheet.parseCSS(defaultStyleSheet);
+			
+			initTokenTypeFormats();
+			
+			initTextFlow();
 			
 			initSyntaxRegExp();
-			styleSheet.parseCSS(defaultStyleSheet);
 			
 			selectable = true;
 			selectionHighlighting = TextSelectionHighlighting.ALWAYS;
@@ -72,12 +80,14 @@ package com.riaspace.as3TextArea
 			addEventListener("textChanged", 
 				function(event:Event):void 
 				{
+					trace("textChanged");
 					colorize();
 				});
 			
 			addEventListener(TextOperationEvent.CHANGE, 
 				function(event:TextOperationEvent):void
 				{
+					trace("TextOperationEvent.CHANGE");
 					if (!pseudoThread.running)
 						pseudoThread.start();
 				});
@@ -85,22 +95,60 @@ package com.riaspace.as3TextArea
 			pseudoThread.addEventListener(TimerEvent.TIMER, 
 				function(event:TimerEvent):void
 				{
+					trace("TimerEvent.TIMER")
 					colorize();
 					pseudoThread.reset();
 				});
 		}
 		
-		protected function initTextFlowImporter():void 
+		protected function initTextFlow():void 
 		{
 			var config:Configuration = new Configuration();
 			config.manageTabKey = true;
 			
-			var format:TextLayoutFormat = new TextLayoutFormat(config.textFlowInitialFormat);
-			format.whiteSpaceCollapse = WhiteSpaceCollapse.PRESERVE;
-			config.textFlowInitialFormat = format;
+			config.textFlowInitialFormat = formats.text;
+			textFlow = new TextFlow(config);
+		}
+
+		protected function initTokenTypeFormats():void
+		{
+			function getTokenTypeFormat(tokenType:String):TextLayoutFormat
+			{
+				var tokenStyleName:String = "." + tokenType;
+				var tokenStyle:Object = 
+					styleSheet.styleNames.indexOf(tokenStyleName) > -1
+					?
+					styleSheet.getStyle(tokenStyleName)
+					:
+					styleSheet.getStyle(".default");
+				
+				var result:TextLayoutFormat = new TextLayoutFormat();
+				result.color = tokenStyle.color;
+				result.fontFamily = tokenStyle.fontFamily;
+				result.fontStyle = tokenStyle.fontStyle;
+				result.fontWeight = tokenStyle.fontWeight;
+				result.fontSize = tokenStyle.fontSize;
+				
+				return result;
+			}
 			
-			importer = TextConverter.getImporter(TextConverter.TEXT_LAYOUT_FORMAT, config);
-			importer.throwOnError = true;
+			formats["text"] = getTokenTypeFormat("text");
+			formats["var"] = getTokenTypeFormat("var");
+			formats["function"] = getTokenTypeFormat("function");
+			formats["strings"] = getTokenTypeFormat("strings");
+			formats["asDocComment"] = getTokenTypeFormat("asDocComment");
+			formats["comment"] = getTokenTypeFormat("comment");
+			formats["accessModifiers"] = getTokenTypeFormat("accessModifiers");
+			formats["classMethodVariableModifiers"] = 
+				getTokenTypeFormat("classMethodVariableModifiers");
+			formats["flowControl"] = getTokenTypeFormat("flowControl");
+			formats["errorHandling"] = getTokenTypeFormat("errorHandling");
+			formats["packageControl"] = getTokenTypeFormat("packageControl");
+			formats["variableKeywords"] = getTokenTypeFormat("variableKeywords");
+			formats["returnTypeKeyword"] = getTokenTypeFormat("returnTypeKeyword");
+			formats["namespaces"] = getTokenTypeFormat("namespaces");
+			formats["literals"] = getTokenTypeFormat("literals");
+			formats["primitives"] = getTokenTypeFormat("primitives");
 		}
 		
 		protected function initSyntaxRegExp():void 
@@ -145,50 +193,41 @@ package com.riaspace.as3TextArea
 			this.syntax = new RegExp(pattern, "gm");
 		}
 		
-		protected function colorize(event:Event = null):void
+		protected function colorize():void
 		{
-			var actPos:int = this.selectionActivePosition;
-			var ancPos:int = this.selectionAnchorPosition;
+			var stime:Number = new Date().time;
+			var compositeOperation:CompositeOperation = new CompositeOperation();
+
+			var operationState:SelectionState = new SelectionState(textFlow,
+				0, text.length);
+			var formatOperation:ApplyFormatOperation =
+				new ApplyFormatOperation(operationState, formats.text, null);
+			compositeOperation.addOperation(formatOperation);
 			
-			var script:String = this.text
-				.replace(/&/g, "&amp;")
-				.replace(/</g, "&lt;")
-				.replace(/>/g, "&gt;");
+			var token:* = syntax.exec(this.text);
+			while(token)
+			{
+				var tokenValue:String = token[0];
+				var tokenType:String = getTokenType(tokenValue);
+				var format:TextLayoutFormat = formats[tokenType]; 
+
+				operationState = new SelectionState(textFlow,
+					token.index, token.index + tokenValue.length);
+				
+				formatOperation = new ApplyFormatOperation(operationState, 
+					format, null);
+				
+				compositeOperation.addOperation(formatOperation);
+
+				syntax.lastIndex = token.index + tokenValue.length;
+				token = syntax.exec(this.text);
+			}
 			
-			script = script.replace(syntax, replaceFunction);
+			var success:Boolean = compositeOperation.doOperation();
+//			if (success)
+//				textFlow.flowComposer.updateAllControllers();
 			
-			var p:String = "<TextFlow xmlns=\"" + TEXT_LAYOUT_NAMESPACE + "\"><p " 
-				+ getStyleAttributes(styleSheet.getStyle(".text")) + ">" + script + "</p></TextFlow>";
-			
-			this.textFlow = importer.importToFlow(p);
-			
-			this.scrollToRange(ancPos, actPos);
-			this.selectRange(ancPos, actPos);
-		}
-		
-		protected function replaceFunction():String
-		{
-			var tokenValue:String = arguments[0];
-			var tokenType:String = getTokenType(tokenValue);
-			
-			var tokenStyleName:String = "." + tokenType;
-			var tokenStyle:Object = 
-				styleSheet.styleNames.indexOf(tokenStyleName) > -1
-				?
-				styleSheet.getStyle("." + tokenType)
-				:
-				styleSheet.getStyle(".default");
-			
-			return "<span" + getStyleAttributes(tokenStyle) + ">" + tokenValue + "</span>";
-		}
-		
-		protected function getStyleAttributes(style:Object):String
-		{
-			return (style.color ? " color='" + style.color + "'" : "")
-			+ (style.fontFamily ? " fontFamily='" + style.fontFamily + "'" : "")
-				+ (style.fontSize ? " fontSize='" + style.fontSize + "'" : "")
-				+ (style.fontStyle ? " fontStyle='" + style.fontStyle + "'" : "")
-				+ (style.fontWeight ? " fontWeight='" + style.fontWeight + "'" : ""); 
+			trace("Coloring done in:", new Date().time - stime, "ms");
 		}
 		
 		protected function getTokenType(tokenValue:String):String
