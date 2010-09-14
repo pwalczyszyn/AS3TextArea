@@ -1,7 +1,9 @@
 package com.riaspace.as3TextArea
 {
+	import flash.events.KeyboardEvent;
 	import flash.events.TimerEvent;
 	import flash.text.StyleSheet;
+	import flash.ui.Keyboard;
 	import flash.utils.Dictionary;
 	import flash.utils.Timer;
 	
@@ -23,31 +25,24 @@ package com.riaspace.as3TextArea
 	{
 		private static const TEXT_LAYOUT_NAMESPACE:String = "http://ns.adobe.com/textLayout/2008";
 		
-		public var accessModifiers:Array = ["public", "private", "protected", "internal"];
+		public var keywords:Object =
+			{
+				accessModifiers : ["public", "private", "protected", "internal"],
+				classMethodVariableModifiers : ["class", "const", "extends", "final", "function", "get", "dynamic", "implements", "interface", "native", "new", "set", "static"],
+				flowControl : ["break", "case", "continue", "default", "do", "else", "for", "for\\seach", "if", "is", "label", "typeof", "return", "switch", "while", "in"],
+				errorHandling : ["catch", "finally", "throw", "try"],
+				packageControl : ["import", "package"],
+				variableKeywords : ["super", "this", "var"],
+				returnTypeKeyword : ["void"],
+				namespaces : ["default xml namespace", "namespace", "use namespace"],
+				literals : ["null", "true", "false"],
+				primitives : ["Boolean", "int", "Number", "String", "uint"],
+				strings : [/".*?"/, /'.*?'/],
+				comments : [/\/\/.*$/, new RegExp("/\\\*[.\\w\\s]*\\\*/"), new RegExp("/\\\*([^*]|[\\r\\n]|(\\\*+([^*/]|[\\r\\n])))*\\\*/")],
+				traceFunction : ["trace"]
+			};
 		
-		public var classMethodVariableModifiers:Array = ["class", "const", "extends", "final", "function", "get", "dynamic", "implements", "interface", "native", "new", "set", "static"]; 
-		
-		public var flowControl:Array = ["break", "case", "continue", "default", "do", "else", "for", "for\\seach", "if", "is", "label", "typeof", "return", "switch", "while", "in"];
-		
-		public var errorHandling:Array = ["catch", "finally", "throw", "try"];
-		
-		public var packageControl:Array = ["import", "package"];
-		
-		public var variableKeywords:Array = ["super", "this", "var"];
-		
-		public var returnTypeKeyword:Array = ["void"];
-		
-		public var namespaces:Array = ["default xml namespace", "namespace", "use namespace"];
-		
-		public var literals:Array = ["null", "true", "false"];
-		
-		public var primitives:Array = ["Boolean", "int", "Number", "String", "uint"];
-		
-		public var strings:Array = ['".*?"', "'.*?'"];
-		
-		public var comments:Array = ["//.*$", "/\\\*[.\\w\\s]*\\\*/", "/\\\*([^*]|[\\r\\n]|(\\\*+([^*/]|[\\r\\n])))*\\\*/"];
-		
-		public var defaultStyleSheet:String = ".text{color:#000000;font-family: courier;} .default{color:#0839ff;} .var{color:#80aad4;} .function{color:#55a97f;} .strings{color:#a82929;} .comment{color:#0e9e0f;font-style:italic;} .asDocComment{color:#5d78c9;}";
+		public var defaultStyleSheet:String = ".text{color:#000000;font-family: courier;} .default{color:#0839ff;} .var{color:#80aad4;} .function{color:#55a97f;} .strings{color:#a82929;} .comment{color:#0e9e0f;font-style:italic;} .asDocComment{color:#5d78c9;} .traceFunction{color:#dc6066;}";
 		
 		protected var _syntaxStyleSheet:String;
 		
@@ -66,10 +61,8 @@ package com.riaspace.as3TextArea
 			super();
 			
 			styleSheet.parseCSS(defaultStyleSheet);
-			initTokenTypeFormats();
-			initTextFlow();
-			
 			initSyntaxRegExp();
+			initTextFlow();
 			
 			selectable = true;
 			selectionHighlighting = TextSelectionHighlighting.ALWAYS;
@@ -90,6 +83,17 @@ package com.riaspace.as3TextArea
 						pseudoThread.start();
 				});
 			
+			addEventListener(KeyboardEvent.KEY_DOWN,
+				function(event:KeyboardEvent):void
+				{
+					if (event.keyCode == Keyboard.TAB)
+					{
+						insertText(String.fromCharCode(Keyboard.TAB));
+						focusManager.setFocus(
+							focusManager.getNextFocusManagerComponent(true));
+					}
+				});
+			
 			pseudoThread.addEventListener(TimerEvent.TIMER, 
 				function(event:TimerEvent):void
 				{
@@ -108,7 +112,7 @@ package com.riaspace.as3TextArea
 			textFlow = new TextFlow(config);
 		}
 
-		protected function initTokenTypeFormats():void
+		protected function initSyntaxRegExp():void 
 		{
 			formats  = new Dictionary();
 			
@@ -132,63 +136,27 @@ package com.riaspace.as3TextArea
 				return result;
 			}
 			
-			formats["text"] = getTokenTypeFormat("text");
-			formats["var"] = getTokenTypeFormat("var");
-			formats["function"] = getTokenTypeFormat("function");
-			formats["strings"] = getTokenTypeFormat("strings");
-			formats["asDocComment"] = getTokenTypeFormat("asDocComment");
-			formats["comment"] = getTokenTypeFormat("comment");
-			formats["accessModifiers"] = getTokenTypeFormat("accessModifiers");
-			formats["classMethodVariableModifiers"] = 
-				getTokenTypeFormat("classMethodVariableModifiers");
-			formats["flowControl"] = getTokenTypeFormat("flowControl");
-			formats["errorHandling"] = getTokenTypeFormat("errorHandling");
-			formats["packageControl"] = getTokenTypeFormat("packageControl");
-			formats["variableKeywords"] = getTokenTypeFormat("variableKeywords");
-			formats["returnTypeKeyword"] = getTokenTypeFormat("returnTypeKeyword");
-			formats["namespaces"] = getTokenTypeFormat("namespaces");
-			formats["literals"] = getTokenTypeFormat("literals");
-			formats["primitives"] = getTokenTypeFormat("primitives");
-		}
-		
-		protected function initSyntaxRegExp():void 
-		{
 			var pattern:String = "";
 			
-			for each(var str:String in strings.concat(comments))
+			for (var type:String in keywords)
 			{
-				pattern += str + "|";
+				var typeKeywords:Array = keywords[type];
+				for each(var keyword:Object in typeKeywords)
+				{
+					if (keyword is RegExp)
+						pattern += RegExp(keyword).source + "|";
+					else
+						pattern += "\\b" + keyword + "\\b|"
+				}
+				
+				formats[type] = getTokenTypeFormat(type);
 			}
 			
-			var createRegExp:Function = function(keywords:Array):String
-			{
-				var result:String = "";
-				for each(var keyword:String in keywords)
-				{
-					result += (result != "" ? "|" : "") + "\\b" + keyword + "\\b";
-				}
-				return result;
-			};
+			// Initializing default text format
+			formats["text"] = getTokenTypeFormat("text");
 			
-			pattern += createRegExp(accessModifiers)
-				+ "|" 
-				+ createRegExp(classMethodVariableModifiers)
-				+ "|"
-				+ createRegExp(flowControl)
-				+ "|"
-				+ createRegExp(errorHandling)
-				+ "|"
-				+ createRegExp(packageControl)
-				+ "|"
-				+ createRegExp(variableKeywords)
-				+ "|"
-				+ createRegExp(returnTypeKeyword)
-				+ "|"
-				+ createRegExp(namespaces)
-				+ "|"
-				+ createRegExp(literals)
-				+ "|"
-				+ createRegExp(primitives);
+			if (pattern.charAt(pattern.length - 1) == "|")
+				pattern = pattern.substr(0, pattern.length - 1);
 			
 			this.syntax = new RegExp(pattern, "gm");
 		}
@@ -265,46 +233,51 @@ package com.riaspace.as3TextArea
 			{
 				return "comment";
 			}
-			else if (accessModifiers.indexOf(tokenValue) > -1)
+			else if (keywords.accessModifiers.indexOf(tokenValue) > -1)
 			{
 				return "accessModifiers";
 			}
-			else if (classMethodVariableModifiers.indexOf(tokenValue) > -1)
+			else if (keywords.classMethodVariableModifiers.indexOf(tokenValue) > -1)
 			{
 				return "classMethodVariableModifiers";
 			}
-			else if (flowControl.indexOf(tokenValue) > -1)
+			else if (keywords.flowControl.indexOf(tokenValue) > -1)
 			{
 				return "flowControl";
 			}
-			else if (errorHandling.indexOf(tokenValue) > -1)
+			else if (keywords.errorHandling.indexOf(tokenValue) > -1)
 			{
 				return "errorHandling";
 			}
-			else if (packageControl.indexOf(tokenValue) > -1)
+			else if (keywords.packageControl.indexOf(tokenValue) > -1)
 			{
 				return "packageControl";
 			}
-			else if (variableKeywords.indexOf(tokenValue) > -1)
+			else if (keywords.variableKeywords.indexOf(tokenValue) > -1)
 			{
 				return "variableKeywords";
 			}
-			else if (returnTypeKeyword.indexOf(tokenValue) > -1)
+			else if (keywords.returnTypeKeyword.indexOf(tokenValue) > -1)
 			{
 				return "returnTypeKeyword";
 			}
-			else if (namespaces.indexOf(tokenValue) > -1)
+			else if (keywords.namespaces.indexOf(tokenValue) > -1)
 			{
 				return "namespaces";
 			}
-			else if (literals.indexOf(tokenValue) > -1)
+			else if (keywords.literals.indexOf(tokenValue) > -1)
 			{
 				return "literals";
 			}
-			else if (primitives.indexOf(tokenValue) > -1)
+			else if (keywords.primitives.indexOf(tokenValue) > -1)
 			{
 				return "primitives";
 			}
+			else if (keywords.traceFunction.indexOf(tokenValue) > -1)
+			{
+				return "traceFunction";
+			}
+
 			return result;
 		}
 		
@@ -324,10 +297,8 @@ package com.riaspace.as3TextArea
 				styleSheet.parseCSS(defaultStyleSheet);
 			
 			var currentText:String = text;
-			
-			initTokenTypeFormats();
+			initSyntaxRegExp();
 			initTextFlow();
-			
 			text = currentText;
 		}
 	}
